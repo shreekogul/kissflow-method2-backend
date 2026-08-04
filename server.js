@@ -1,54 +1,58 @@
-const express = require('express');
-const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-
+const express = require('express');
 const app = express();
-app.use(cors());
+
 app.use(express.json());
 
-const JOBS_FILE = path.join(__dirname, 'portal-jobs.json');
+const DATA_FILE = path.join(__dirname, 'jobs.json');
 
-// Initialize local JSON storage if it doesn't exist
-if (!fs.existsSync(JOBS_FILE)) {
-    fs.writeFileSync(JOBS_FILE, '[]', 'utf8');
+// Helper function to read jobs from jobs.json safely
+function readJobsFile() {
+    if (!fs.existsSync(DATA_FILE)) {
+        return [];
+    }
+    try {
+        const data = fs.readFileSync(DATA_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (error) {
+        console.error("Error reading jobs.json:", error);
+        return [];
+    }
 }
 
-// GET Endpoint for Careers Portal frontend
+// Helper function to write jobs to jobs.json safely
+function writeJobsFile(jobs) {
+    try {
+        fs.writeFileSync(DATA_FILE, JSON.stringify(jobs, null, 2), 'utf8');
+    } catch (error) {
+        console.error("Error writing jobs.json:", error);
+    }
+}
+
+// 1. WEBHOOK ENDPOINT (Receives new jobs from Kissflow and saves to jobs.json)
+app.post('/api/webhook-job', (req, res) => {
+    const newJob = req.body;
+    console.log("Received Kissflow payload:", newJob);
+
+    let jobs = readJobsFile();
+    jobs.push(newJob);
+    writeJobsFile(jobs);
+
+    console.log("Job successfully saved to jobs.json!");
+    res.status(200).json({ success: true, message: "Job saved permanently!" });
+});
+
+// 2. FETCH ENDPOINT (Sends saved jobs from jobs.json to your frontend portal)
 app.get('/api/portal-jobs', (req, res) => {
-    fs.readFile(JOBS_FILE, 'utf8', (err, data) => {
-        if (err) return res.status(500).json({ error: 'Failed to read jobs file' });
-        res.json(JSON.parse(data || '[]'));
+    const jobs = readJobsFile();
+    res.status(200).json({
+        success: true,
+        data: jobs
     });
 });
 
-// POST Webhook Endpoint for Kissflow Integration
-app.post('/api/webhook/kissflow-job', (req, res) => {
-    console.log("Received Kissflow payload:", req.body);
-
-    const newJob = req.body.Job_Vacancy || req.body;
-
-    fs.readFile(JOBS_FILE, 'utf8', (err, data) => {
-        const jobs = err ? [] : JSON.parse(data || '[]');
-
-        const jobEntry = {
-            id: Date.now(),
-            ...newJob
-        };
-
-        jobs.unshift(jobEntry);
-
-        fs.writeFile(JOBS_FILE, JSON.stringify(jobs, null, 2), (writeErr) => {
-            if (writeErr) {
-                return res.status(500).json({ error: 'Failed to save job record' });
-            }
-            console.log("Job successfully saved!");
-            res.status(200).json({ message: 'Job posted successfully!', job: jobEntry });
-        });
-    });
-});
-
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
-    console.log(`Method 2 Server running on http://localhost:${PORT}`);
+    console.log(`Method 2 Server running on port ${PORT}`);
 });
