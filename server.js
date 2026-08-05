@@ -24,7 +24,23 @@ app.post("/api/webhook-job", async (req, res) => {
     try {
         console.log("Received Kissflow payload:", req.body);
 
-        const newJob = new Job(req.body);
+        const vacancy = req.body["Job Vacancy"];
+
+        const newJob = new Job({
+            "Job title": vacancy.jobTitle,
+            "Department": vacancy.department,
+            "Status": vacancy.status,
+            "Location": vacancy.location,
+            "Employment Type": vacancy.employmentType,
+            "Remote Status": vacancy.remoteStatus,
+            "Salary Range": vacancy.salaryRange,
+            "Openings": vacancy.openings,
+            "About the Role": vacancy.aboutRole,
+            "Responsibilities": vacancy.responsibilities,
+            "Requirements": vacancy.requirements,
+            "Vacancy Slug/ID": vacancy.vacancySlug
+        });
+
         await newJob.save();
 
         console.log("Method 2 saved job to MongoDB!");
