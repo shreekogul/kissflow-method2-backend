@@ -1,58 +1,68 @@
-const fs = require('fs');
-const path = require('path');
-const express = require('express');
-const app = express();
+require("dotenv").config();
 
+const dns = require("dns");
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
+const express = require("express");
+const mongoose = require("mongoose");
+
+const app = express();
 app.use(express.json());
 
-const DATA_FILE = path.join(__dirname, 'jobs.json');
+const MONGO_URI = process.env.MONGO_URI;
 
-// Helper function to read jobs from jobs.json safely
-function readJobsFile() {
-    if (!fs.existsSync(DATA_FILE)) {
-        return [];
-    }
+mongoose.connect(MONGO_URI)
+    .then(() => console.log("Method 2 Connected to MongoDB!"))
+    .catch((err) => console.error("MongoDB Error:", err));
+
+// Same collection as Method 1
+const jobSchema = new mongoose.Schema({}, { strict: false, timestamps: true });
+const Job = mongoose.model("JobMethod1", jobSchema);
+
+// Receive data from Kissflow Method 2
+app.post("/api/webhook-job", async (req, res) => {
     try {
-        const data = fs.readFileSync(DATA_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        console.error("Error reading jobs.json:", error);
-        return [];
+        console.log("Received Kissflow payload:", req.body);
+
+        const newJob = new Job(req.body);
+        await newJob.save();
+
+        console.log("Method 2 saved job to MongoDB!");
+
+        res.status(200).json({
+            success: true,
+            message: "Job saved permanently!"
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
     }
-}
-
-// Helper function to write jobs to jobs.json safely
-function writeJobsFile(jobs) {
-    try {
-        fs.writeFileSync(DATA_FILE, JSON.stringify(jobs, null, 2), 'utf8');
-    } catch (error) {
-        console.error("Error writing jobs.json:", error);
-    }
-}
-
-// 1. WEBHOOK ENDPOINT (Receives new jobs from Kissflow and saves to jobs.json)
-app.post('/api/webhook-job', (req, res) => {
-    const newJob = req.body;
-    console.log("Received Kissflow payload:", newJob);
-
-    let jobs = readJobsFile();
-    jobs.push(newJob);
-    writeJobsFile(jobs);
-
-    console.log("Job successfully saved to jobs.json!");
-    res.status(200).json({ success: true, message: "Job saved permanently!" });
 });
 
-// 2. FETCH ENDPOINT (Sends saved jobs from jobs.json to your frontend portal)
-app.get('/api/portal-jobs', (req, res) => {
-    const jobs = readJobsFile();
-    res.status(200).json({
-        success: true,
-        data: jobs
-    });
+// Send jobs to frontend
+app.get("/api/portal-jobs", async (req, res) => {
+    try {
+        const jobs = await Job.find().sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            data: jobs
+        });
+
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
 });
 
 const PORT = process.env.PORT || 5001;
+
 app.listen(PORT, () => {
     console.log(`Method 2 Server running on port ${PORT}`);
 });
